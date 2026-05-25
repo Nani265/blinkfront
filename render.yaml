@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: blinkfront-api
+    runtime: go
+    plan: free
+    rootDir: backend
+    buildCommand: go build -o copilot-api ./cmd/server
+    startCommand: ./copilot-api
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATA_PATH
+        value: /tmp/blinkfront-database.sqlite
+      - key: WEBRTC_STUN_URL
+        value: stun:stun.l.google.com:19302
+      - key: WEBRTC_MAX_VIEWERS
+        value: "10"

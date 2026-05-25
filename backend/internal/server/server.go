@@ -98,6 +98,10 @@ func userPublic(u store.User) map[string]any {
 }
 
 func (s *Server) register(mux *http.ServeMux) {
+	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, map[string]any{"success": true, "status": "ok"})
+	})
+
 	// Auth (public)
 	mux.HandleFunc("POST /api/auth/login", s.handleLogin)
 	mux.HandleFunc("POST /api/auth/signup", s.handleSignup)
