@@ -1,0 +1,9 @@
+/data/store.json
+/data/*-store.json
+/data/smoke-store.json
+/storage/database.json
+/storage/*-store.json
+/storage/database.sqlite
+/storage/*.sqlite
+/storage/*.log
+*.exe

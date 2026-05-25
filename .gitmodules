@@ -1,0 +1,3 @@
+[submodule "copilot_app_frontend"]
+	path = copilot_app_frontend
+	url = git@github.com:mando2807/copilot_app_frontend.git

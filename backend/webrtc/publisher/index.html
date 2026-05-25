@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Vehicle Live Stream Publisher</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 24px; background: #0f172a; color: #e2e8f0; }
+    h1 { font-size: 1.25rem; margin-bottom: 8px; }
+    .card { background: #1e293b; border-radius: 12px; padding: 20px; max-width: 720px; margin-bottom: 16px; }
+    label { display: block; font-size: 12px; color: #94a3b8; margin-bottom: 4px; }
+    input { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: #fff; margin-bottom: 12px; }
+    video { width: 100%; max-height: 360px; background: #000; border-radius: 8px; }
+    .row { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+    button { padding: 10px 18px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; }
+    .primary { background: #2563eb; color: #fff; }
+    .danger { background: #dc2626; color: #fff; }
+    .secondary { background: #475569; color: #fff; }
+    #status { font-size: 14px; padding: 8px 12px; border-radius: 6px; display: inline-block; margin-top: 8px; }
+    .offline { background: #334155; }
+    .connecting { background: #854d0e; color: #fef9c3; }
+    .live { background: #14532d; color: #bbf7d0; }
+    .failed { background: #7f1d1d; color: #fecaca; }
+    .hint { font-size: 12px; color: #94a3b8; margin-top: 8px; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <h1>Vehicle Camera - Live Publisher</h1>
+  <p class="hint">Connects over the internet via WebRTC signaling + STUN/TURN. Use fleet session token or device access token.</p>
+
+  <div class="card">
+    <label>API / Signaling base (HTTPS origin, no path)</label>
+    <input id="apiBase" placeholder="https://api.example.com" />
+    <label>Signaling WebSocket URL (optional)</label>
+    <input id="signalingUrl" placeholder="wss://api.example.com/api/webrtc/ws" />
+    <label>Vehicle ID</label>
+    <input id="vehicleId" placeholder="1" />
+    <label>Auth token (session or device access_token)</label>
+    <input id="token" type="password" placeholder="paste token" />
+    <video id="preview" autoplay playsinline muted></video>
+    <div class="row">
+      <button class="primary" id="btnStart">Start Stream</button>
+      <button class="danger" id="btnStop" disabled>Stop Stream</button>
+    </div>
+    <div id="status" class="offline">Offline</div>
+    <p class="hint" id="log"></p>
+  </div>
+
+  <script src="publisher.js"></script>
+</body>
+</html>

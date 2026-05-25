@@ -1,0 +1,22 @@
+[Unit]
+Description=Copilot Fleet API (Go) — REST + WebSocket + WebRTC signaling
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/copilot-api
+EnvironmentFile=/etc/copilot-api/env
+ExecStart=/opt/copilot-api/copilot-api
+Restart=on-failure
+RestartSec=5
+
+# SQLite + uploads
+ReadWritePaths=/var/lib/copilot-api
+
+NoNewPrivileges=true
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
