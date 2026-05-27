@@ -123,7 +123,7 @@ func (s *Server) register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/webrtc/ws", s.handleWebRTCSignaling)
 	mux.HandleFunc("GET /api/webrtc/ice-servers", s.handleWebRTCICEServers)
 	mux.HandleFunc("GET /api/webrtc/stream-status/{vehicleId}", s.handleWebRTCStreamStatus)
-	mux.Handle("GET /api/webrtc/publisher/", http.StripPrefix("/api/webrtc/publisher/", http.FileServer(http.Dir("webrtc/publisher"))))
+	mux.HandleFunc("POST /api/webrtc/phone-token/{vehicleId}", s.handleWebRTCPhoneToken)
 
 	// Vehicles
 	mux.HandleFunc("GET /api/get-vehicles", s.handleGetVehicles)

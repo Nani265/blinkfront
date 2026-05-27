@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Run on Ubuntu API server with sudo.
 # Expects bundle layout from package-deploy-bundle.sh:
-#   bin/copilot-api, bin/webrtc/, config/*, install.sh
+#   bin/copilot-api, config/*, install.sh
 
 set -euo pipefail
 
@@ -36,8 +36,6 @@ fi
 echo "==> API binary"
 mkdir -p /opt/copilot-api /var/lib/copilot-api /etc/copilot-api
 install -m 755 "${BIN}/copilot-api" /opt/copilot-api/copilot-api
-rm -rf /opt/copilot-api/webrtc
-cp -a "${BIN}/webrtc" /opt/copilot-api/webrtc
 chown -R www-data:www-data /opt/copilot-api /var/lib/copilot-api
 
 if [[ ! -f /etc/copilot-api/env ]]; then
@@ -51,6 +49,8 @@ WEBRTC_STUN_URL=stun:stun.l.google.com:19302
 WEBRTC_TURN_URL=${TURN_URL}
 WEBRTC_TURN_USERNAME=${TURN_USERNAME}
 WEBRTC_TURN_PASSWORD=${TURN_SECRET}
+WEBRTC_PHONE_TOKEN_SECRET=${TURN_SECRET}
+WEBRTC_PHONE_TOKEN_TTL_SECONDS=600
 WEBRTC_MAX_VIEWERS=10
 EOF
   chmod 600 /etc/copilot-api/env

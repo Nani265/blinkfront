@@ -10,7 +10,7 @@ import (
 	"copilot-local-api/internal/store"
 )
 
-func TestWebRTCSignalingConnectsExistingViewerWhenPublisherStarts(t *testing.T) {
+func TestWebRTCSignalingConnectsExistingViewerWhenPhoneStarts(t *testing.T) {
 	st, err := store.Open(filepath.Join(t.TempDir(), "database.sqlite"))
 	if err != nil {
 		t.Fatalf("open store: %v", err)
@@ -25,8 +25,8 @@ func TestWebRTCSignalingConnectsExistingViewerWhenPublisherStarts(t *testing.T) 
 	srv := &Server{store: st}
 	viewer := newSignalingClient(t, srv)
 	defer viewer.close()
-	publisher := newSignalingClient(t, srv)
-	defer publisher.close()
+	phone := newSignalingClient(t, srv)
+	defer phone.close()
 
 	viewer.send(map[string]any{
 		"type": "viewer_join", "vehicleId": "1", "token": token,
@@ -44,13 +44,13 @@ func TestWebRTCSignalingConnectsExistingViewerWhenPublisherStarts(t *testing.T) 
 		t.Fatalf("viewer second message type = %v", viewerUnavailable["type"])
 	}
 
-	publisher.send(map[string]any{
-		"type": "publisher_join", "vehicleId": "1", "token": token,
+	phone.send(map[string]any{
+		"type": "phone_join", "vehicleId": "1", "token": token,
 	})
 
-	publisherJoined := publisher.read()
-	if publisherJoined["type"] != "joined" {
-		t.Fatalf("publisher first message type = %v", publisherJoined["type"])
+	phoneJoined := phone.read()
+	if phoneJoined["type"] != "joined" {
+		t.Fatalf("phone first message type = %v", phoneJoined["type"])
 	}
 
 	viewerStarted := viewer.read()
@@ -58,20 +58,49 @@ func TestWebRTCSignalingConnectsExistingViewerWhenPublisherStarts(t *testing.T) 
 		t.Fatalf("viewer stream-start message type = %v", viewerStarted["type"])
 	}
 
-	publisherViewer := publisher.read()
-	if publisherViewer["type"] != "viewer_joined" {
-		t.Fatalf("publisher viewer message type = %v", publisherViewer["type"])
+	phoneViewer := phone.read()
+	if phoneViewer["type"] != "viewer_joined" {
+		t.Fatalf("phone viewer message type = %v", phoneViewer["type"])
 	}
-	if publisherViewer["viewerId"] == "" {
+	if phoneViewer["viewerId"] == "" {
 		t.Fatal("viewer_joined missing viewerId")
 	}
 
-	publisher.send(map[string]any{
+	phone.send(map[string]any{
 		"type": "stream_stopped", "vehicleId": "1",
 	})
-	ack := publisher.read()
+	ack := phone.read()
 	if ack["type"] != "ack" {
-		t.Fatalf("publisher stop ack type = %v", ack["type"])
+		t.Fatalf("phone stop ack type = %v", ack["type"])
+	}
+}
+
+func TestWebRTCPhoneTokenAllowsPhoneJoin(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "database.sqlite"))
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer st.Close()
+
+	srv := &Server{store: st}
+	token, err := srv.issueWebRTCPhoneToken("1", 2, time.Now().Add(time.Minute))
+	if err != nil {
+		t.Fatalf("issue phone token: %v", err)
+	}
+
+	phone := newSignalingClient(t, srv)
+	defer phone.close()
+
+	phone.send(map[string]any{
+		"type": "phone_join", "vehicleId": "1", "token": token,
+	})
+
+	joined := phone.read()
+	if joined["type"] != "joined" {
+		t.Fatalf("phone first message type = %v", joined["type"])
+	}
+	if joined["role"] != "source" {
+		t.Fatalf("phone role = %v, want source", joined["role"])
 	}
 }
 

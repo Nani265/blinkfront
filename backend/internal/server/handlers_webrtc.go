@@ -4,6 +4,7 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha1"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -126,6 +127,41 @@ func (s *Server) handleWebRTCStreamStatus(w http.ResponseWriter, r *http.Request
 	})
 }
 
+func (s *Server) handleWebRTCPhoneToken(w http.ResponseWriter, r *http.Request) {
+	uid, ok := s.requireAuth(w, r)
+	if !ok {
+		return
+	}
+	vehicleID := strings.TrimSpace(r.PathValue("vehicleId"))
+	if vehicleID == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"success": false, "message": "vehicleId required"})
+		return
+	}
+	if !s.webrtcCanAccessVehicle(uid, vehicleID) {
+		writeJSON(w, http.StatusForbidden, map[string]any{"success": false, "message": "forbidden"})
+		return
+	}
+	ttl := int64(600)
+	if n, err := strconv.ParseInt(webrtcEnv("WEBRTC_PHONE_TOKEN_TTL_SECONDS", "600"), 10, 64); err == nil && n > 0 {
+		ttl = n
+	}
+	expiresAt := time.Now().UTC().Add(time.Duration(ttl) * time.Second)
+	token, err := s.issueWebRTCPhoneToken(vehicleID, uid, expiresAt)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"success": false, "message": "could not create phone stream token"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"success": true,
+		"data": map[string]any{
+			"vehicleId":  vehicleID,
+			"token":      token,
+			"expiresAt":  expiresAt.Format(time.RFC3339),
+			"ttlSeconds": ttl,
+		},
+	})
+}
+
 func (s *Server) handleWebRTCSignaling(w http.ResponseWriter, r *http.Request) {
 	key := r.Header.Get("Sec-WebSocket-Key")
 	if key == "" {
@@ -209,12 +245,12 @@ func (s *Server) runWebRTCSignaling(conn net.Conn) {
 		}
 		room := s.webrtcHub().room(vehicleID)
 		switch role {
-		case "publisher":
+		case "source":
 			room.clearPublisher()
 			stop := map[string]any{"type": "stream_stopped", "vehicleId": vehicleID}
 			room.broadcastToViewers(stop, "")
 			room.broadcastToViewers(map[string]any{
-				"type": "publisher_disconnected", "vehicleId": vehicleID,
+				"type": "source_disconnected", "vehicleId": vehicleID,
 			}, "")
 		case "viewer":
 			if viewerID != "" {
@@ -245,22 +281,22 @@ func (s *Server) runWebRTCSignaling(conn net.Conn) {
 					vehicleID = strings.TrimSpace(fmt.Sprint(msg["vehicle_id"]))
 				}
 				switch typ {
-				case "publisher_join":
-					auth, errMsg := s.webrtcAuthPublisher(vehicleID, token)
+				case "phone_join", "source_join", "publisher_join":
+					auth, errMsg := s.webrtcAuthStreamSource(vehicleID, token)
 					if !auth.ok {
 						send(map[string]any{"type": "error", "message": errMsg})
 						return
 					}
-					role = "publisher"
+					role = "source"
 					room := s.webrtcHub().room(vehicleID)
-					peer = &webrtcPeer{id: "publisher", role: role, uid: auth.uid, roleName: auth.role, send: outgoing}
+					peer = &webrtcPeer{id: "phone", role: role, uid: auth.uid, roleName: auth.role, send: outgoing}
 					if !room.setPublisher(peer) {
-						send(map[string]any{"type": "error", "message": "publisher already connected for this vehicle"})
+						send(map[string]any{"type": "error", "message": "phone camera already connected for this vehicle"})
 						return
 					}
 					joined = true
 					send(map[string]any{
-						"type": "joined", "role": "publisher", "vehicleId": vehicleID,
+						"type": "joined", "role": "source", "vehicleId": vehicleID,
 						"streamActive": true, "iceServers": s.webrtcICEServers(),
 					})
 					room.broadcastToViewers(map[string]any{
@@ -301,11 +337,11 @@ func (s *Server) runWebRTCSignaling(conn net.Conn) {
 						})
 					} else {
 						send(map[string]any{
-							"type": "stream_unavailable", "vehicleId": vehicleID, "message": "Publisher is offline",
+							"type": "stream_unavailable", "vehicleId": vehicleID, "message": "Phone camera is offline",
 						})
 					}
 				default:
-					send(map[string]any{"type": "error", "message": "send publisher_join or viewer_join first"})
+					send(map[string]any{"type": "error", "message": "send phone_join or viewer_join first"})
 				}
 				continue
 			}
@@ -315,7 +351,7 @@ func (s *Server) runWebRTCSignaling(conn net.Conn) {
 			switch typ {
 			case "offer":
 				target := strings.TrimSpace(fmt.Sprint(msg["viewerId"]))
-				if role != "publisher" || target == "" {
+				if role != "source" || target == "" {
 					send(map[string]any{"type": "error", "message": "invalid offer"})
 					continue
 				}
@@ -332,7 +368,7 @@ func (s *Server) runWebRTCSignaling(conn net.Conn) {
 					continue
 				}
 				switch role {
-				case "publisher":
+				case "source":
 					if target := strings.TrimSpace(fmt.Sprint(msg["viewerId"])); target != "" {
 						room.sendToViewer(target, msg)
 					}
@@ -341,7 +377,7 @@ func (s *Server) runWebRTCSignaling(conn net.Conn) {
 					room.sendToPublisher(msg)
 				}
 			case "stream_stopped":
-				if role == "publisher" {
+				if role == "source" {
 					room.clearPublisher()
 					room.broadcastToViewers(map[string]any{
 						"type": "stream_stopped", "vehicleId": vehicleID,
@@ -376,7 +412,7 @@ func (s *Server) webrtcAuthViewer(vehicleID, token string) (webrtcAuthResult, st
 	return webrtcAuthResult{ok: true, uid: uid, role: u.Role}, ""
 }
 
-func (s *Server) webrtcAuthPublisher(vehicleID, token string) (webrtcAuthResult, string) {
+func (s *Server) webrtcAuthStreamSource(vehicleID, token string) (webrtcAuthResult, string) {
 	if vehicleID == "" || token == "" {
 		return webrtcAuthResult{}, "vehicleId and token required"
 	}
@@ -387,10 +423,75 @@ func (s *Server) webrtcAuthPublisher(vehicleID, token string) (webrtcAuthResult,
 		}
 		return webrtcAuthResult{}, "forbidden"
 	}
+	if uid, ok := s.webrtcPhoneTokenValid(vehicleID, token); ok {
+		u, _ := s.store.UserByID(uid)
+		return webrtcAuthResult{ok: true, uid: uid, role: u.Role}, ""
+	}
 	if s.webrtcDeviceTokenValid(vehicleID, token) {
 		return webrtcAuthResult{ok: true, uid: 0, role: "device"}, ""
 	}
 	return webrtcAuthResult{}, "unauthorized"
+}
+
+func webrtcPhoneTokenSecret() []byte {
+	secret := webrtcEnv("WEBRTC_PHONE_TOKEN_SECRET", "")
+	if secret == "" {
+		secret = webrtcEnv("WEBRTC_TURN_STATIC_AUTH_SECRET", "")
+	}
+	if secret == "" {
+		secret = "blinkfront-local-phone-stream-token"
+	}
+	return []byte(secret)
+}
+
+func (s *Server) issueWebRTCPhoneToken(vehicleID string, uid int64, expiresAt time.Time) (string, error) {
+	payload := map[string]any{
+		"vehicleId": vehicleID,
+		"uid":       uid,
+		"exp":       expiresAt.Unix(),
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+	body := base64.RawURLEncoding.EncodeToString(raw)
+	mac := hmac.New(sha256.New, webrtcPhoneTokenSecret())
+	_, _ = mac.Write([]byte(body))
+	signature := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+	return "phone." + body + "." + signature, nil
+}
+
+func (s *Server) webrtcPhoneTokenValid(vehicleID, token string) (int64, bool) {
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 || parts[0] != "phone" {
+		return 0, false
+	}
+	mac := hmac.New(sha256.New, webrtcPhoneTokenSecret())
+	_, _ = mac.Write([]byte(parts[1]))
+	expected := mac.Sum(nil)
+	actual, err := base64.RawURLEncoding.DecodeString(parts[2])
+	if err != nil || !hmac.Equal(expected, actual) {
+		return 0, false
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return 0, false
+	}
+	var payload struct {
+		VehicleID string `json:"vehicleId"`
+		UID       int64  `json:"uid"`
+		Exp       int64  `json:"exp"`
+	}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return 0, false
+	}
+	if payload.VehicleID != vehicleID || payload.UID <= 0 || payload.Exp <= time.Now().Unix() {
+		return 0, false
+	}
+	if !s.webrtcCanAccessVehicle(payload.UID, vehicleID) {
+		return 0, false
+	}
+	return payload.UID, true
 }
 
 func (s *Server) webrtcCanAccessVehicle(uid int64, vehicleID string) bool {

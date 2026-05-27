@@ -10,7 +10,4 @@ cd "${ROOT}/backend"
 echo "Building copilot-api for linux/amd64..."
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o "${OUT}/copilot-api" ./cmd/server
 
-cp -r "${ROOT}/backend/webrtc" "${OUT}/webrtc"
-
 echo "Done: ${OUT}/copilot-api"
-echo "       ${OUT}/webrtc/ (publisher static files)"

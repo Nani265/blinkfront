@@ -16,8 +16,8 @@ type webrtcRoom struct {
 }
 
 type webrtcPeer struct {
-	id       string // viewerId for viewers; "publisher" for publisher
-	role     string // publisher | viewer
+	id       string // viewerId for viewers; "phone" for the stream source
+	role     string // source | viewer
 	uid      int64
 	roleName string // admin, fleet_owner, etc.
 	send     chan map[string]any

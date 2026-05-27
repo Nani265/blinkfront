@@ -18,5 +18,9 @@ services:
         value: openrelayprojectsecret
       - key: WEBRTC_TURN_TTL_SECONDS
         value: "3600"
+      - key: WEBRTC_PHONE_TOKEN_SECRET
+        value: openrelayprojectsecret
+      - key: WEBRTC_PHONE_TOKEN_TTL_SECONDS
+        value: "600"
       - key: WEBRTC_MAX_VIEWERS
         value: "10"

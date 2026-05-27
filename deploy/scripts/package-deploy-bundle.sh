@@ -11,7 +11,6 @@ rm -rf "${BUNDLE}"
 mkdir -p "${BUNDLE}/bin" "${BUNDLE}/config"
 
 cp "${ROOT}/deploy/dist/copilot-api" "${BUNDLE}/bin/"
-cp -a "${ROOT}/deploy/dist/webrtc" "${BUNDLE}/bin/webrtc"
 cp "${ROOT}/deploy/scripts/install-api-ubuntu.sh" "${BUNDLE}/install.sh"
 cp "${ROOT}/deploy/env/production.api.env.example" "${BUNDLE}/config/env.example"
 cp "${ROOT}/deploy/nginx/api.copilotai.click.conf" "${BUNDLE}/config/"
