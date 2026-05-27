@@ -1457,6 +1457,32 @@ func (s *Server) handleVehicleImages(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"success": true, "data": items})
 }
 
+func (s *Server) handleVehicleImagesSummary(w http.ResponseWriter, r *http.Request) {
+	uid, ok := s.requireAuth(w, r)
+	if !ok {
+		return
+	}
+	id, err := strconv.ParseInt(r.PathValue("vehicleId"), 10, 64)
+	if err != nil || id <= 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"success": false, "message": "bad vehicle id"})
+		return
+	}
+	items := s.apsFeedItems(uid, s.isAdmin(uid), nil, &id, nil, 500)
+	counts := map[string]int{}
+	for _, item := range items {
+		date := strings.Split(fmt.Sprint(item["captured_at"]), "T")[0]
+		if date == "" || date == "<nil>" {
+			date = time.Now().UTC().Format("2006-01-02")
+		}
+		counts[date]++
+	}
+	var out []map[string]any
+	for d, c := range counts {
+		out = append(out, map[string]any{"date": d, "count": c})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"success": true, "data": out})
+}
+
 func (s *Server) handleDriverFeed(w http.ResponseWriter, r *http.Request) {
 	uid, ok := s.requireAuth(w, r)
 	if !ok {

@@ -130,6 +130,7 @@ func (s *Server) register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/get-vehicle/{id}", s.handleGetVehicle)
 	mux.HandleFunc("GET /api/vehicles/{vehicleId}/current-driver", s.handleVehicleCurrentDriver)
 	mux.HandleFunc("GET /api/vehicles/{vehicleId}/recognition-logs", s.handleVehicleRecognitionLogs)
+	mux.HandleFunc("GET /api/vehicle-images/{vehicleId}/date-summary", s.handleVehicleImagesSummary)
 	mux.HandleFunc("GET /api/vehicle-images/{vehicleId}", s.handleVehicleImages)
 	mux.HandleFunc("POST /api/create-vehicle", s.handleCreateVehicle)
 	mux.HandleFunc("POST /api/edit-vehicle/{id}", s.handleEditVehicle)
