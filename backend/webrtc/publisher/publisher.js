@@ -33,6 +33,7 @@
   let ws = null;
   let localStream = null;
   const peerConnections = new Map();
+  const pendingIceCandidates = new Map();
   let iceServers = [{ urls: 'stun:stun.l.google.com:19302' }];
   let vehicleId = '';
   let token = '';
@@ -71,6 +72,7 @@
   async function createPeerForViewer(viewerId) {
     const pc = new RTCPeerConnection({ iceServers });
     peerConnections.set(viewerId, pc);
+    pendingIceCandidates.set(viewerId, []);
 
     localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
 
@@ -87,6 +89,9 @@
 
     pc.onconnectionstatechange = () => {
       log(`Viewer ${viewerId}: ${pc.connectionState}`);
+    };
+    pc.oniceconnectionstatechange = () => {
+      log(`Viewer ${viewerId} ICE: ${pc.iceConnectionState}`);
     };
 
     const offer = await pc.createOffer();
@@ -116,6 +121,7 @@
         const pc = peerConnections.get(vid);
         if (pc && msg.sdp) {
           await pc.setRemoteDescription({ type: 'answer', sdp: msg.sdp });
+          await flushPendingIce(vid, pc);
         }
         break;
       }
@@ -123,10 +129,10 @@
         const vid = msg.viewerId;
         const pc = peerConnections.get(vid);
         if (pc && msg.candidate) {
-          try {
-            await pc.addIceCandidate(msg.candidate);
-          } catch (e) {
-            console.warn(e);
+          if (!pc.remoteDescription) {
+            queueIce(vid, msg.candidate);
+          } else {
+            await addIceCandidate(pc, msg.candidate);
           }
         }
         break;
@@ -136,6 +142,7 @@
         const pc = peerConnections.get(vid);
         if (pc) pc.close();
         peerConnections.delete(vid);
+        pendingIceCandidates.delete(vid);
         break;
       }
       case 'error':
@@ -145,9 +152,34 @@
     }
   }
 
+  function queueIce(viewerId, candidate) {
+    if (!pendingIceCandidates.has(viewerId)) {
+      pendingIceCandidates.set(viewerId, []);
+    }
+    pendingIceCandidates.get(viewerId).push(candidate);
+  }
+
+  async function addIceCandidate(pc, candidate) {
+    try {
+      await pc.addIceCandidate(candidate);
+    } catch (e) {
+      console.warn(e);
+      log(`ICE candidate rejected: ${e.message || e}`);
+    }
+  }
+
+  async function flushPendingIce(viewerId, pc) {
+    const queued = pendingIceCandidates.get(viewerId) || [];
+    pendingIceCandidates.set(viewerId, []);
+    for (const candidate of queued) {
+      await addIceCandidate(pc, candidate);
+    }
+  }
+
   function cleanup() {
     peerConnections.forEach((pc) => pc.close());
     peerConnections.clear();
+    pendingIceCandidates.clear();
     if (localStream) {
       localStream.getTracks().forEach((t) => t.stop());
       localStream = null;
