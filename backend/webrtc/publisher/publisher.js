@@ -36,6 +36,7 @@
   let iceServers = [{ urls: 'stun:stun.l.google.com:19302' }];
   let vehicleId = '';
   let token = '';
+  const logLines = [];
 
   function setStatus(text, cls) {
     statusEl.textContent = text;
@@ -43,7 +44,9 @@
   }
 
   function log(msg) {
-    logEl.textContent = msg;
+    const line = `${new Date().toLocaleTimeString()} ${msg}`;
+    logLines.push(line);
+    logEl.textContent = logLines.slice(-10).join('\n');
     console.log('[publisher]', msg);
   }
 
@@ -56,6 +59,9 @@
     return `${wsProto}://${host}/api/webrtc/ws`;
   }
 
+  if (!$('signalingUrl').value.trim()) {
+    $('signalingUrl').value = signalingUrl();
+  }
   function send(msg) {
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify(msg));
@@ -168,35 +174,47 @@
       return;
     }
 
+    cleanup();
+    vehicleId = $('vehicleId').value.trim();
+    token = $('token').value.trim();
     setStatus('Connecting...', 'connecting');
     $('btnStart').disabled = true;
+    log(`Starting publisher for vehicle ${vehicleId}`);
 
     try {
+      log('Requesting camera permission');
       localStream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'environment' },
         audio: false,
       });
+      log('Camera stream acquired');
       $('preview').srcObject = localStream;
     } catch (e) {
       setStatus('Camera denied', 'failed');
-      log(e.message);
+      log(`Camera failed: ${e.name || 'Error'} ${e.message || ''}`.trim());
       $('btnStart').disabled = false;
       return;
     }
 
-    ws = new WebSocket(signalingUrl());
+    const wsUrl = signalingUrl();
+    log(`Opening WebSocket: ${wsUrl}`);
+    ws = new WebSocket(wsUrl);
     ws.onopen = () => {
+      log('WebSocket open; joining as publisher');
       send({ type: 'publisher_join', vehicleId, token });
     };
     ws.onmessage = async (ev) => {
       const msg = JSON.parse(ev.data);
+      log(`Signal received: ${msg.type || 'unknown'}`);
       await handleSignal(msg);
     };
-    ws.onerror = () => {
+    ws.onerror = (e) => {
       setStatus('WebSocket failed', 'failed');
+      log(`WebSocket failed: ${e.message || 'browser blocked or connection failed'}`);
       cleanup();
     };
-    ws.onclose = () => {
+    ws.onclose = (e) => {
+      log(`WebSocket closed: ${e.code || ''} ${e.reason || ''}`.trim());
       if (statusEl.classList.contains('live')) setStatus('Disconnected', 'offline');
     };
 

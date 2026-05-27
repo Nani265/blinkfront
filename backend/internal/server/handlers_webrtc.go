@@ -1,6 +1,7 @@
 package server
 
 import (
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha1"
 	"encoding/base64"
@@ -31,16 +32,53 @@ func webrtcEnv(key, fallback string) string {
 	return fallback
 }
 
+func webrtcEnvList(key, fallback string) []string {
+	raw := webrtcEnv(key, fallback)
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if v := strings.TrimSpace(part); v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+func webrtcTurnCredentials() (string, string, bool) {
+	user := webrtcEnv("WEBRTC_TURN_USERNAME", "")
+	pass := webrtcEnv("WEBRTC_TURN_PASSWORD", "")
+	if user != "" && pass != "" {
+		return user, pass, true
+	}
+
+	secret := webrtcEnv("WEBRTC_TURN_STATIC_AUTH_SECRET", "")
+	if secret == "" {
+		return "", "", false
+	}
+	ttl := int64(3600)
+	if n, err := strconv.ParseInt(webrtcEnv("WEBRTC_TURN_TTL_SECONDS", "3600"), 10, 64); err == nil && n > 0 {
+		ttl = n
+	}
+	user = strconv.FormatInt(time.Now().Add(time.Duration(ttl)*time.Second).Unix(), 10)
+	mac := hmac.New(sha1.New, []byte(secret))
+	_, _ = mac.Write([]byte(user))
+	pass = base64.StdEncoding.EncodeToString(mac.Sum(nil))
+	return user, pass, true
+}
+
 func (s *Server) webrtcICEServers() []map[string]any {
 	servers := []map[string]any{}
-	stun := webrtcEnv("WEBRTC_STUN_URL", "stun:stun.l.google.com:19302")
-	if stun != "" {
+	for _, stun := range webrtcEnvList("WEBRTC_STUN_URLS", webrtcEnv("WEBRTC_STUN_URL", "stun:stun.l.google.com:19302")) {
 		servers = append(servers, map[string]any{"urls": stun})
 	}
-	turnURL := webrtcEnv("WEBRTC_TURN_URL", "")
-	turnUser := webrtcEnv("WEBRTC_TURN_USERNAME", "")
-	turnPass := webrtcEnv("WEBRTC_TURN_PASSWORD", "")
-	if turnURL != "" && turnUser != "" && turnPass != "" {
+	turnUser, turnPass, ok := webrtcTurnCredentials()
+	if !ok {
+		return servers
+	}
+	for _, turnURL := range webrtcEnvList("WEBRTC_TURN_URLS", webrtcEnv("WEBRTC_TURN_URL", "")) {
 		servers = append(servers, map[string]any{
 			"urls":       turnURL,
 			"username":   turnUser,
